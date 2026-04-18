@@ -3,111 +3,157 @@ import subprocess
 from pathlib import Path
 
 
-def _escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+def _esc(s: str) -> str:
+    if not s:
+        return ""
+    s = s.replace("\\", "\\\\")
+    for ch in ("*", "_", "#", "<", ">", "@", "$"):
+        s = s.replace(ch, f"\\{ch}")
+    return s
+
+
+def _fmt(v, nd: int = 2) -> str:
+    try:
+        return f"{float(v):.{nd}f}"
+    except (TypeError, ValueError):
+        return "?"
 
 
 def _typst(hypothesis: str, pack: list[dict], verdicts: list[dict], synthesis: dict) -> str:
-    lines: list[str] = []
-    lines.append('#set page(margin: 2cm)')
-    lines.append('#set text(font: "IBM Plex Sans", size: 10pt)')
-    lines.append('#set heading(numbering: "1.")')
-    lines.append('')
-    lines.append('#align(center)[#text(size: 18pt, weight: "bold")[Hypothesis Council Report]]')
-    lines.append('')
-    lines.append('= Hypothesis')
-    lines.append('')
-    lines.append(f'#quote(block: true)[{hypothesis}]')
-    lines.append('')
-    lines.append('= Headline')
-    lines.append('')
-    lines.append(f'*{synthesis.get("headline", "(no headline)")}*')
-    lines.append('')
-    cs = synthesis.get("consensus_score")
-    sr = synthesis.get("score_range", [None, None])
-    lines.append(f'- Consensus score: *{cs}* (range {sr[0]}–{sr[1]})')
-    lines.append('')
-    lines.append('= Council verdicts')
-    lines.append('')
-    lines.append('#table(columns: (auto, auto, auto, 1fr),')
-    lines.append('  [*Member*], [*Score*], [*Band*], [*One-line verdict*],')
+    L: list[str] = []
+    L += [
+        '#set page(margin: 2cm)',
+        '#set text(font: "IBM Plex Sans", size: 10pt)',
+        '#set heading(numbering: "1.")',
+        '',
+        '#align(center)[#text(size: 18pt, weight: "bold")[Hypothesis Council Report]]',
+        '',
+        '= Hypothesis',
+        '',
+        f'#quote(block: true)[{_esc(hypothesis)}]',
+        '',
+        '= Headline',
+        '',
+        f'*{_esc(synthesis.get("headline", ""))}*',
+        '',
+    ]
+
+    ms = synthesis.get("mean_scores", {})
+    rg = synthesis.get("score_ranges", {})
+    L += [
+        '= Council scores',
+        '',
+        '#table(columns: (auto, auto, auto),',
+        '  [*Axis*], [*Mean*], [*Range*],',
+        f'  [Conspiratorial], [{_fmt(ms.get("conspiratorial"))}], '
+        f'[{_fmt((rg.get("conspiratorial") or [None,None])[0])}–'
+        f'{_fmt((rg.get("conspiratorial") or [None,None])[1])}],',
+        f'  [Credible], [{_fmt(ms.get("credible"))}], '
+        f'[{_fmt((rg.get("credible") or [None,None])[0])}–'
+        f'{_fmt((rg.get("credible") or [None,None])[1])}],',
+        f'  [Likely], [{_fmt(ms.get("likely"))}], '
+        f'[{_fmt((rg.get("likely") or [None,None])[0])}–'
+        f'{_fmt((rg.get("likely") or [None,None])[1])}],',
+        ')',
+        '',
+        '= Per-member scores',
+        '',
+        '#table(columns: (auto, auto, auto, auto),',
+        '  [*Member*], [*Conspiratorial*], [*Credible*], [*Likely*],',
+    ]
     for v in verdicts:
         if "_error" in v:
-            lines.append(
-                f'  [{v["_member"]}], [ERR], [--], [{_escape(v["_error"][:80])}],'
-            )
+            L.append(f'  [{v["_member"]}], [ERR], [ERR], [ERR],')
             continue
-        lines.append(
-            f'  [{v["_member"]}], [{v.get("score", "?")}], '
-            f'[{v.get("confidence_band", "?")}], '
-            f'[{_escape(v.get("one_line_verdict", ""))}],'
+        s = v.get("scores", {})
+        L.append(
+            f'  [{v["_member"]}], [{_fmt(s.get("conspiratorial"))}], '
+            f'[{_fmt(s.get("credible"))}], [{_fmt(s.get("likely"))}],'
         )
-    lines.append(')')
-    lines.append('')
-    lines.append('= Divergence analysis')
-    lines.append('')
-    lines.append(synthesis.get("divergence_analysis", ""))
-    lines.append('')
-    lines.append('= Strongest counterarguments (ranked)')
-    lines.append('')
-    for i, c in enumerate(synthesis.get("strongest_counterarguments_ranked", []), 1):
-        raised = ", ".join(c.get("raised_by", []))
-        lines.append(f'{i}. *[{c.get("severity", "?")}]* {c.get("point", "")} _(raised by: {raised})_')
-    lines.append('')
-    lines.append('= Shared load-bearing assumptions')
-    lines.append('')
+    L += [')', '']
+
+    L += [
+        '= Council verdict',
+        '',
+        _esc(synthesis.get("council_verdict", "")),
+        '',
+        '= Alternative readings',
+        '',
+        _esc(synthesis.get("alternative_reads_comparison", "")),
+        '',
+        '= Divergence analysis',
+        '',
+        _esc(synthesis.get("divergence_analysis", "")),
+        '',
+        '= Strongest supporting evidence',
+        '',
+    ]
+    for e in synthesis.get("strongest_supporting_evidence", []):
+        raised = ", ".join(e.get("raised_by", []))
+        L.append(f'- {_esc(e.get("point", ""))} _(raised by: {raised})_')
+    L += ['', '= Strongest refuting evidence', '']
+    for e in synthesis.get("strongest_refuting_evidence", []):
+        raised = ", ".join(e.get("raised_by", []))
+        L.append(f'- {_esc(e.get("point", ""))} _(raised by: {raised})_')
+
+    L += ['', '= Shared load-bearing assumptions', '']
     for a in synthesis.get("shared_load_bearing_assumptions", []):
-        lines.append(f'- {a}')
-    lines.append('')
-    lines.append('= Open questions')
-    lines.append('')
-    for q in synthesis.get("what_the_council_wants_to_know", []):
-        lines.append(f'- {q}')
-    lines.append('')
-    lines.append('= Calibration note')
-    lines.append('')
-    lines.append(synthesis.get("calibration_note", ""))
-    lines.append('')
-    lines.append('#pagebreak()')
-    lines.append('= Per-member detail')
+        L.append(f'- {_esc(a)}')
+    L += ['', '= Open questions', '']
+    for q in synthesis.get("open_questions", []):
+        L.append(f'- {_esc(q)}')
+    L += ['', '= Calibration note', '', _esc(synthesis.get("calibration_note", ""))]
+
+    L += ['', '#pagebreak()', '= Per-member detail']
     for v in verdicts:
-        lines.append('')
-        lines.append(f'== {v["_member"]} (`{v["_model"]}`)')
+        L += ['', f'== {_esc(v["_member"])} (`{v["_model"]}`)']
         if "_error" in v:
-            lines.append(f'Error: {v["_error"]}')
+            L.append(f'Error: {_esc(v["_error"])}')
             continue
-        lines.append('')
-        lines.append(f'Score: *{v.get("score")}*  Band: {v.get("confidence_band")}')
-        lines.append('')
-        lines.append('*Counterarguments*')
-        for c in v.get("counterarguments", []):
-            lines.append(f'- {c}')
-        lines.append('')
-        lines.append('*Load-bearing assumptions*')
+        s = v.get("scores", {})
+        L += [
+            '',
+            f'Conspiratorial: *{_fmt(s.get("conspiratorial"))}*  '
+            f'Credible: *{_fmt(s.get("credible"))}*  '
+            f'Likely: *{_fmt(s.get("likely"))}*',
+            '',
+            '*Overall judgement*',
+            '',
+            _esc(v.get("overall_judgement", "")),
+            '',
+            '*Alternative read*',
+            '',
+            _esc(v.get("alternative_read", "")),
+            '',
+            '*Supporting evidence*',
+        ]
+        for e in v.get("supporting_evidence", []):
+            L.append(f'- {_esc(e)}')
+        L += ['', '*Refuting evidence*']
+        for e in v.get("refuting_evidence", []):
+            L.append(f'- {_esc(e)}')
+        L += ['', '*Load-bearing assumptions*']
         for a in v.get("load_bearing_assumptions", []):
-            lines.append(f'- {a}')
-        lines.append('')
-        shift = v.get("evidence_that_would_shift_me", {})
-        lines.append('*Evidence that would shift this member*')
-        lines.append('')
-        lines.append('Upward:')
-        for e in shift.get("upward", []):
-            lines.append(f'- {e}')
-        lines.append('')
-        lines.append('Downward:')
-        for e in shift.get("downward", []):
-            lines.append(f'- {e}')
-    lines.append('')
-    lines.append('#pagebreak()')
-    lines.append('= Grounding pack')
+            L.append(f'- {_esc(a)}')
+        shift = v.get("what_would_shift_me", {})
+        L += ['', '*What would shift this member*', '', 'Toward likely:']
+        for e in shift.get("toward_likely", []):
+            L.append(f'- {_esc(e)}')
+        L += ['', 'Away from likely:']
+        for e in shift.get("away_from_likely", []):
+            L.append(f'- {_esc(e)}')
+        if v.get("grounding_notes"):
+            L += ['', f'_Grounding notes: {_esc(v["grounding_notes"])}_']
+
+    L += ['', '#pagebreak()', '= Grounding pack']
     for p in pack:
-        lines.append('')
-        lines.append(f'[{p["n"]}] *{_escape(p["title"])}*')
-        lines.append('')
-        lines.append(f'#link("{p["url"]}")')
-        lines.append('')
-        lines.append(p["snippet"][:600].replace("\n", " "))
-    return "\n".join(lines)
+        L += ['', f'[{p["n"]}] *{_esc(p["title"])}*']
+        if p.get("url"):
+            L += ['', f'#link("{p["url"]}")']
+        if p.get("snippet"):
+            L += ['', _esc(p["snippet"][:600].replace("\n", " "))]
+
+    return "\n".join(L)
 
 
 def write_report(

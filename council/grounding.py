@@ -1,8 +1,18 @@
 import os
+import re
 
 import httpx
 
 from .config import OPENROUTER_URL
+
+
+def _strip_md(s: str) -> str:
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    s = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", s)
+    s = re.sub(r"`(.+?)`", r"\1", s)
+    s = re.sub(r"^\s*[-*]\s+", "• ", s, flags=re.MULTILINE)
+    s = re.sub(r"^#+\s*", "", s, flags=re.MULTILINE)
+    return s
 
 
 def _tavily(hypothesis: str, max_results: int) -> list[dict]:
@@ -26,14 +36,17 @@ def _sonar(hypothesis: str, max_results: int) -> list[dict]:
                 "role": "system",
                 "content": (
                     "You are a neutral news briefer. Given a hypothesis or claim, "
-                    "produce a concise factual context pack — recent relevant "
-                    "developments, key actors, and current state. No opinion, no "
-                    "probability estimates. 250 words max."
+                    "produce a factual context pack covering recent relevant "
+                    "developments, key actors, current state, and any relevant "
+                    "counter-narratives in reporting. Write in plain prose — no "
+                    "markdown formatting, no bullet lists, no bold or headers. "
+                    "No opinion, no probability estimates. Aim for 400-600 words."
                 ),
             },
             {"role": "user", "content": hypothesis},
         ],
         "temperature": 0.2,
+        "max_tokens": 1200,
     }
     r = httpx.post(
         OPENROUTER_URL,
@@ -48,7 +61,7 @@ def _sonar(hypothesis: str, max_results: int) -> list[dict]:
     )
     r.raise_for_status()
     data = r.json()
-    summary = data["choices"][0]["message"]["content"]
+    summary = _strip_md(data["choices"][0]["message"]["content"])
     citations = data.get("citations") or []
 
     pack: list[dict] = [

@@ -40,7 +40,13 @@ def run_council(hypothesis: str) -> Path:
         if "_error" in v:
             print(f"  ! {v['_member']}: {v['_error']}")
         else:
-            print(f"  - {v['_member']}: {v.get('score')} ({v.get('confidence_band', '')})")
+            s = v.get("scores", {})
+            print(
+                f"  - {v['_member']}: "
+                f"conspiratorial={s.get('conspiratorial')} "
+                f"credible={s.get('credible')} "
+                f"likely={s.get('likely')}"
+            )
 
     print("[synthesis] merging verdicts…")
     synth_user = (
