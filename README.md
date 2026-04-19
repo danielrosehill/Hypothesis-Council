@@ -63,3 +63,11 @@ See [`examples/demo-run/`](examples/demo-run/) for a full council evaluation of 
 Council consensus: high-conspiratorial (0.85 mean), low-credible (0.32), low-likely (0.13). All three members converged independently on the same alternative explanation — pragmatic multi-party de-escalation driven by Gulf-state pressure and Iranian assurances, rather than a coordinated US-Iran ruse.
 
 The interesting part isn't that the theory was rated unlikely — it's that three models from three different lineages (Anthropic, xAI, MiniMax) produced structurally similar counter-narratives, which is some evidence the alternative read isn't just one model's bias.
+
+## Reports
+
+| Run | Report |
+|-----|--------|
+| 2026-04-18 21:43:36 | [reports/2026-04-18_214336/report.pdf](reports/2026-04-18_214336/report.pdf) |
+| 2026-04-18 21:46:45 | [reports/2026-04-18_214645/report.pdf](reports/2026-04-18_214645/report.pdf) |
+| demo-run | [examples/demo-run/report.pdf](examples/demo-run/report.pdf) |
